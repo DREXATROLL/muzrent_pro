@@ -5,5 +5,6 @@ from rentals import views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', views.catalog, name='catalog'),
+    path('profile/', views.profile, name='profile'), # <--- НОВАЯ СТРОКА
     path('api/book/', views.create_booking_async, name='book_api'),
 ]

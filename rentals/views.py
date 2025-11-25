@@ -5,10 +5,21 @@ from asgiref.sync import sync_to_async
 from .models import Instrument, Rental
 from django.contrib.auth.models import User
 
-# Синхронная вьюха для каталога (здесь всё ок)
+# Синхронная вьюха для каталога
 def catalog(request):
     instruments = Instrument.objects.all().order_by('id')
-    return render(request, 'catalog.html', {'instruments': instruments})
+    
+    category = request.GET.get('category')
+    if category:
+        instruments = instruments.filter(category=category)
+    
+    # Получаем список всех категорий для меню
+    categories = Instrument.objects.values_list('category', flat=True).distinct()
+    
+    return render(request, 'catalog.html', {
+        'instruments': instruments,
+        'categories': categories
+    })
 
 # Выносим работу с юзером в отдельную функцию-обертку
 @sync_to_async
@@ -59,3 +70,11 @@ def process_booking_transaction(inst_id, user):
             
     except Instrument.DoesNotExist:
         return "Ошибка: Инструмент не найден"
+
+from django.contrib.auth.decorators import login_required
+
+@login_required(login_url='/admin/')
+def profile(request):
+    # Показываем только аренды текущего пользователя
+    my_rentals = Rental.objects.filter(user=request.user).select_related('instrument').order_by('-created_at')
+    return render(request, 'profile.html', {'rentals': my_rentals})
