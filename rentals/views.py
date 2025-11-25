@@ -3,46 +3,57 @@ from django.http import JsonResponse
 from django.db import transaction
 from asgiref.sync import sync_to_async
 from .models import Instrument, Rental
+from django.contrib.auth.models import User
 
-# Отображение каталога
+# Синхронная вьюха для каталога (здесь всё ок)
 def catalog(request):
     instruments = Instrument.objects.all().order_by('id')
     return render(request, 'catalog.html', {'instruments': instruments})
 
-# Асинхронное бронирование с защитой транзакции
+# Выносим работу с юзером в отдельную функцию-обертку
+@sync_to_async
+def get_user_safe(request):
+    # Обращение к request.user вызывает запрос в БД (сессии)
+    # Поэтому это должно быть внутри sync_to_async
+    if request.user.is_authenticated:
+        return request.user
+    # Если не залогинен, берем первого юзера (Админа) для теста
+    return User.objects.first()
+
+# Асинхронная вьюха
 async def create_booking_async(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
     
-    # Получаем пользователя (в рамках лабы считаем, что это админ, если не залогинен)
-    user = await sync_to_async(lambda: request.user)()
-    if not user.is_authenticated:
-        # Пытаемся найти админа для теста, если не залогинен
-        from django.contrib.auth.models import User
-        try:
-            user = await User.objects.afirst()
-        except:
-            return JsonResponse({'message': 'Создайте суперпользователя!'}, status=403)
+    # ИСПОЛЬЗУЕМ БЕЗОПАСНУЮ ФУНКЦИЮ
+    user = await get_user_safe(request)
+    
+    if not user:
+        return JsonResponse({'message': 'Ошибка: Нет пользователей в базе!'}, status=403)
 
     instrument_id = request.POST.get('id')
     
     # Запуск транзакции
     message = await process_booking_transaction(instrument_id, user)
+    
     return JsonResponse({'message': message})
 
 @sync_to_async
 def process_booking_transaction(inst_id, user):
     try:
         with transaction.atomic():
-            # ЯВНАЯ БЛОКИРОВКА СТРОКИ
+            # ЯВНАЯ БЛОКИРОВКА СТРОКИ (SELECT ... FOR UPDATE)
+            # Это защищает от двойного бронирования
             instrument = Instrument.objects.select_for_update().get(id=inst_id)
             
             if instrument.status != 'available':
                 return "❌ Ошибка: Инструмент уже занят кем-то другим!"
             
+            # Меняем статус
             instrument.status = 'rented'
             instrument.save()
             
+            # Создаем запись
             Rental.objects.create(instrument=instrument, user=user)
             return "✅ Успешно! Вы забронировали инструмент."
             
