@@ -7,6 +7,7 @@ from asgiref.sync import sync_to_async
 from .models import Instrument, Rental, Category, Brand, UserProfile
 from .forms import UserRegistrationForm, ReviewForm
 from django.core.serializers import serialize
+from django.db.models import Prefetch # <-- Добавь этот импорт в начало файла!
 import json
 
 # --- 1. РЕГИСТРАЦИЯ ---
@@ -50,7 +51,12 @@ def catalog(request):
 # --- 3. ЛИЧНЫЙ КАБИНЕТ ---
 @login_required
 def profile(request):
-    rentals = Rental.objects.filter(user=request.user).select_related('instrument').order_by('-created_at')
+    # Используем prefetch_related для подгрузки платежей к каждой аренде
+    rentals = Rental.objects.filter(user=request.user)\
+        .select_related('instrument')\
+        .prefetch_related('payments')\
+        .order_by('-created_at')
+        
     return render(request, 'profile.html', {'rentals': rentals})
 
 # --- 4. REST API (Требование преподавателя) ---
@@ -135,11 +141,16 @@ def instrument_detail(request, pk):
     instrument = get_object_or_404(Instrument, pk=pk)
     reviews = instrument.reviews.select_related('user').all()
     
-    # Обработка добавления отзыва
+    # --- НОВОЕ: Достаем фото и историю ремонтов ---
+    photos = instrument.photos.all() 
+    # Обрати внимание: maintenance_set - это стандартное имя для обратной связи, 
+    # если не указан related_name
+    maintenance_log = instrument.maintenance_set.all().order_by('-date')
+    # ---------------------------------------------
+
     if request.method == 'POST':
         if not request.user.is_authenticated:
             return redirect('login')
-        
         form = ReviewForm(request.POST)
         if form.is_valid():
             review = form.save(commit=False)
@@ -153,6 +164,8 @@ def instrument_detail(request, pk):
     return render(request, 'instrument_detail.html', {
         'instrument': instrument,
         'reviews': reviews,
+        'photos': photos,           # <-- Передаем в шаблон
+        'maintenance_log': maintenance_log, # <-- Передаем в шаблон
         'form': form
     })
     
