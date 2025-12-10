@@ -1,15 +1,26 @@
 from django.contrib import admin
-from .models import Instrument, Rental
+from .models import *
 
-# Настройка отображения Инструментов
+# Простой способ зарегистрировать всё
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    prepopulated_fields = {'slug': ('name',)}
+
+admin.site.register(Brand)
+admin.site.register(Location)
+admin.site.register(UserProfile)
+admin.site.register(InstrumentPhoto)
+admin.site.register(Payment)
+admin.site.register(Review)
+admin.site.register(Maintenance)
+
 @admin.register(Instrument)
 class InstrumentAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'price', 'status') # Какие колонки показывать
-    list_filter = ('status', 'category') # Фильтры справа
-    search_fields = ('name',) # Строка поиска
+    list_display = ('name', 'brand', 'category', 'price_per_day', 'status', 'location')
+    list_filter = ('status', 'brand', 'category')
+    search_fields = ('name', 'inventory_number')
 
-# Настройка отображения Аренд
 @admin.register(Rental)
 class RentalAdmin(admin.ModelAdmin):
-    list_display = ('instrument', 'user', 'created_at')
-    readonly_fields = ('created_at',) # Запрет на редактирование даты создания
+    list_display = ('instrument', 'user', 'start_date', 'total_price', 'is_active')
+    list_filter = ('is_active',)
