@@ -8,76 +8,91 @@
 </head>
 <body class="bg-light">
 
-<!-- Шапка сайта -->
-<nav class="navbar navbar-dark bg-dark mb-4">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
     <div class="container">
-        <a href="/" class="navbar-brand mb-0 h1">🎸 MuzRent Pro</a>
-        <div>
+        <a href="/" class="navbar-brand">🎸 MuzRent Pro</a>
+        <div class="d-flex">
             {% if user.is_authenticated %}
-                <span class="text-light me-3">Привет, {{ user.username }}</span>
-                {% if user.is_superuser %}
-                    <a href="/admin/" class="btn btn-outline-light btn-sm">Админка</a>
-                {% endif %}
+                <span class="text-light me-3 align-self-center">Привет, {{ user.username }}</span>
+                <a href="/profile/" class="btn btn-sm btn-outline-light me-2">Кабинет</a>
+                <form action="/logout/" method="post" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-danger">Выход</button>
+                </form>
             {% else %}
-                <a href="/admin/" class="btn btn-outline-light btn-sm">Войти</a>
+                <a href="/login/" class="btn btn-sm btn-light me-2">Войти</a>
+                <a href="/register/" class="btn btn-sm btn-outline-light">Регистрация</a>
             {% endif %}
         </div>
     </div>
 </nav>
 
 <div class="container">
-    <!-- Блок фильтров и Личного кабинета -->
-    <div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white rounded shadow-sm">
-        <div>
-            <span class="fw-bold me-2">Категории:</span>
-            <a href="/" class="btn btn-sm btn-outline-primary me-1">Все</a>
-            {% for cat in categories %}
-                <a href="/?category={{ cat }}" class="btn btn-sm btn-outline-secondary me-1">{{ cat }}</a>
-            {% endfor %}
-        </div>
-        
-        {% if user.is_authenticated %}
-            <a href="/profile/" class="btn btn-success btn-sm">👤 Личный кабинет</a>
-        {% endif %}
+    <!-- Фильтры -->
+    <div class="card mb-4 p-3 shadow-sm">
+        <form class="row g-3">
+            <div class="col-md-4">
+                <label>Категория</label>
+                <select name="category" class="form-select" onchange="this.form.submit()">
+                    <option value="">Все категории</option>
+                    {% for c in categories %}
+                    <option value="{{ c.id }}" {% if request.GET.category == c.id|stringformat:"i" %}selected{% endif %}>
+                        {{ c.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label>Бренд</label>
+                <select name="brand" class="form-select" onchange="this.form.submit()">
+                    <option value="">Все бренды</option>
+                    {% for b in brands %}
+                    <option value="{{ b.id }}" {% if request.GET.brand == b.id|stringformat:"i" %}selected{% endif %}>
+                        {{ b.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <a href="/" class="btn btn-secondary w-100">Сбросить</a>
+            </div>
+        </form>
     </div>
 
-    <!-- Сетка товаров -->
-    <div class="row" id="catalog">
+    <!-- Товары -->
+    <div class="row">
         {% for item in instruments %}
         <div class="col-md-4 mb-4">
-            <div class="card h-100 shadow-sm border-0">
+            <div class="card h-100 shadow-sm">
+                <div class="card-header d-flex justify-content-between">
+                    <small class="text-muted">{{ item.category.name }}</small>
+                    <small class="fw-bold">{{ item.brand.name }}</small>
+                </div>
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <h5 class="card-title mb-0">{{ item.name }}</h5>
-                        <span class="badge bg-light text-dark border">{{ item.category }}</span>
-                    </div>
-                    
-                    <h3 class="text-primary my-3">{{ item.price }} ₽ <small class="fs-6 text-muted">/ сутки</small></h3>
+                    <h5 class="card-title">{{ item.name }}</h5>
+                    <p class="text-muted small">📍 {{ item.location.name }}</p>
+                    <h3 class="text-primary">{{ item.price_per_day }} ₽ <small class="fs-6">/сутки</small></h3>
                     
                     {% if item.status == 'available' %}
-                        <div class="d-grid">
-                            <button onclick="book({{ item.id }})" class="btn btn-primary">Забронировать</button>
-                        </div>
-                        <div class="text-center mt-2">
-                            <span class="badge bg-success-subtle text-success rounded-pill">✅ В наличии</span>
-                        </div>
+                        <button onclick="book({{ item.id }})" class="btn btn-primary w-100">Забронировать</button>
                     {% else %}
-                        <div class="d-grid">
-                            <button disabled class="btn btn-secondary">Недоступно</button>
-                        </div>
-                        <div class="text-center mt-2">
-                            <span class="badge bg-danger-subtle text-danger rounded-pill">🚫 Сейчас в аренде</span>
-                        </div>
+                        <button disabled class="btn btn-secondary w-100">
+                            {% if item.status == 'rented' %}Сейчас в аренде
+                            {% else %}На ремонте{% endif %}
+                        </button>
                     {% endif %}
                 </div>
             </div>
         </div>
         {% empty %}
-            <div class="col-12 text-center py-5">
-                <h3 class="text-muted">В этой категории пока нет инструментов 😔</h3>
-                <a href="/" class="btn btn-outline-primary mt-3">Вернуться ко всем товарам</a>
-            </div>
+        <div class="col-12 text-center py-5">
+            <h3>Инструменты не найдены 🔍</h3>
+        </div>
         {% endfor %}
+    </div>
+    
+    <div class="text-center mt-5 text-muted small">
+        <a href="/api/v1/instruments/" target="_blank">REST API Link</a> (для проверки)
     </div>
 </div>
 
@@ -89,24 +104,13 @@
 
         try {
             let response = await fetch('/api/book/', {
-                method: 'POST', 
-                body: formData,
-                headers: {'X-CSRFToken': csrf}
+                method: 'POST', body: formData, headers: {'X-CSRFToken': csrf}
             });
             let result = await response.json();
-            
-            if (response.ok) {
-                alert(result.message);
-                location.reload();
-            } else {
-                // Если ошибка (403/409), тоже показываем сообщение
-                alert(result.message || "Ошибка при бронировании");
-            }
-        } catch(e) { 
-            alert('Ошибка сети или сервера'); 
-        }
+            alert(result.message);
+            if (response.ok) location.reload();
+        } catch(e) { alert('Ошибка сети'); }
     }
 </script>
-
 </body>
 </html>

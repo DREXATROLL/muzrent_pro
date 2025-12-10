@@ -1,80 +1,112 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import JsonResponse
 from django.db import transaction
+from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required
 from asgiref.sync import sync_to_async
-from .models import Instrument, Rental
-from django.contrib.auth.models import User
+from .models import Instrument, Rental, Category, Brand, UserProfile
+from .forms import UserRegistrationForm
+from django.core.serializers import serialize
+import json
 
-# Синхронная вьюха для каталога
+# --- 1. РЕГИСТРАЦИЯ ---
+def register(request):
+    if request.method == 'POST':
+        form = UserRegistrationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            # Создаем профиль
+            phone = form.cleaned_data.get('phone')
+            address = form.cleaned_data.get('address')
+            UserProfile.objects.create(user=user, phone_number=phone, address=address)
+            
+            login(request, user) # Сразу входим
+            return redirect('catalog')
+    else:
+        form = UserRegistrationForm()
+    return render(request, 'registration/register.html', {'form': form})
+
+# --- 2. КАТАЛОГ (С новыми фильтрами) ---
 def catalog(request):
-    instruments = Instrument.objects.all().order_by('id')
+    # Используем select_related для оптимизации (меньше запросов к БД)
+    instruments = Instrument.objects.select_related('category', 'brand', 'location').all()
     
-    category = request.GET.get('category')
-    if category:
-        instruments = instruments.filter(category=category)
+    # Фильтрация
+    cat_id = request.GET.get('category')
+    brand_id = request.GET.get('brand')
     
-    # Получаем список всех категорий для меню
-    categories = Instrument.objects.values_list('category', flat=True).distinct()
-    
-    return render(request, 'catalog.html', {
-        'instruments': instruments,
-        'categories': categories
-    })
+    if cat_id:
+        instruments = instruments.filter(category_id=cat_id)
+    if brand_id:
+        instruments = instruments.filter(brand_id=brand_id)
 
-# Выносим работу с юзером в отдельную функцию-обертку
+    context = {
+        'instruments': instruments,
+        'categories': Category.objects.all(),
+        'brands': Brand.objects.all(),
+    }
+    return render(request, 'catalog.html', context)
+
+# --- 3. ЛИЧНЫЙ КАБИНЕТ ---
+@login_required
+def profile(request):
+    rentals = Rental.objects.filter(user=request.user).select_related('instrument').order_by('-created_at')
+    return render(request, 'profile.html', {'rentals': rentals})
+
+# --- 4. REST API (Требование преподавателя) ---
+def api_instruments(request):
+    """
+    Возвращает список инструментов в формате JSON.
+    Это реализует требование 'REST API'.
+    """
+    instruments = Instrument.objects.all().values(
+        'id', 'name', 'price_per_day', 'status', 
+        'category__name', 'brand__name'
+    )
+    return JsonResponse({'results': list(instruments)}, safe=False)
+
+# --- 5. АСИНХРОННОЕ БРОНИРОВАНИЕ ---
 @sync_to_async
 def get_user_safe(request):
-    # Обращение к request.user вызывает запрос в БД (сессии)
-    # Поэтому это должно быть внутри sync_to_async
     if request.user.is_authenticated:
         return request.user
-    # Если не залогинен, берем первого юзера (Админа) для теста
-    return User.objects.first()
+    return None
 
-# Асинхронная вьюха
 async def create_booking_async(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
     
-    # ИСПОЛЬЗУЕМ БЕЗОПАСНУЮ ФУНКЦИЮ
     user = await get_user_safe(request)
-    
     if not user:
-        return JsonResponse({'message': 'Ошибка: Нет пользователей в базе!'}, status=403)
+         return JsonResponse({'message': 'Пожалуйста, войдите в систему!'}, status=403)
 
     instrument_id = request.POST.get('id')
+    result_msg = await process_booking_transaction(instrument_id, user)
     
-    # Запуск транзакции
-    message = await process_booking_transaction(instrument_id, user)
-    
-    return JsonResponse({'message': message})
+    # Возвращаем статус в зависимости от сообщения
+    status_code = 200 if "Успешно" in result_msg else 400
+    return JsonResponse({'message': result_msg}, status=status_code)
 
 @sync_to_async
 def process_booking_transaction(inst_id, user):
     try:
         with transaction.atomic():
-            # ЯВНАЯ БЛОКИРОВКА СТРОКИ (SELECT ... FOR UPDATE)
-            # Это защищает от двойного бронирования
             instrument = Instrument.objects.select_for_update().get(id=inst_id)
             
             if instrument.status != 'available':
-                return "❌ Ошибка: Инструмент уже занят кем-то другим!"
+                return "❌ Инструмент уже занят или на обслуживании!"
             
-            # Меняем статус
             instrument.status = 'rented'
             instrument.save()
             
-            # Создаем запись
-            Rental.objects.create(instrument=instrument, user=user)
-            return "✅ Успешно! Вы забронировали инструмент."
+            # В новой структуре start_date обязателен, ставим сегодня
+            import datetime
+            Rental.objects.create(
+                instrument=instrument, 
+                user=user,
+                start_date=datetime.date.today()
+            )
+            return "✅ Успешно забронировано!"
             
     except Instrument.DoesNotExist:
         return "Ошибка: Инструмент не найден"
-
-from django.contrib.auth.decorators import login_required
-
-@login_required(login_url='/admin/')
-def profile(request):
-    # Показываем только аренды текущего пользователя
-    my_rentals = Rental.objects.filter(user=request.user).select_related('instrument').order_by('-created_at')
-    return render(request, 'profile.html', {'rentals': my_rentals})
