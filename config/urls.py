@@ -18,4 +18,8 @@ urlpatterns = [
     # API
     path('api/book/', views.create_booking_async, name='book_api'),
     path('api/v1/instruments/', views.api_instruments, name='api_instruments'), # Для отчета
+    
+    
+    path('rental/cancel/<int:rental_id>/', views.cancel_rental, name='cancel_rental'),
+    path('instrument/<int:pk>/', views.instrument_detail, name='instrument_detail'),
 ]

@@ -1,11 +1,11 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from asgiref.sync import sync_to_async
 from .models import Instrument, Rental, Category, Brand, UserProfile
-from .forms import UserRegistrationForm
+from .forms import UserRegistrationForm, ReviewForm
 from django.core.serializers import serialize
 import json
 
@@ -110,3 +110,48 @@ def process_booking_transaction(inst_id, user):
             
     except Instrument.DoesNotExist:
         return "Ошибка: Инструмент не найден"
+    
+# --- 6. ОТМЕНА БРОНИРОВАНИЯ ---
+@login_required
+def cancel_rental(request, rental_id):
+    # Ищем аренду, которая принадлежит текущему пользователю
+    rental = get_object_or_404(Rental, id=rental_id, user=request.user, is_active=True)
+    
+    if request.method == 'POST':
+        with transaction.atomic():
+            # 1. Деактивируем аренду
+            rental.is_active = False
+            rental.save()
+            
+            # 2. Освобождаем инструмент
+            instrument = rental.instrument
+            instrument.status = 'available'
+            instrument.save()
+            
+    return redirect('profile')
+
+# --- 7. ДЕТАЛЬНАЯ СТРАНИЦА + ОТЗЫВЫ ---
+def instrument_detail(request, pk):
+    instrument = get_object_or_404(Instrument, pk=pk)
+    reviews = instrument.reviews.select_related('user').all()
+    
+    # Обработка добавления отзыва
+    if request.method == 'POST':
+        if not request.user.is_authenticated:
+            return redirect('login')
+        
+        form = ReviewForm(request.POST)
+        if form.is_valid():
+            review = form.save(commit=False)
+            review.instrument = instrument
+            review.user = request.user
+            review.save()
+            return redirect('instrument_detail', pk=pk)
+    else:
+        form = ReviewForm()
+
+    return render(request, 'instrument_detail.html', {
+        'instrument': instrument,
+        'reviews': reviews,
+        'form': form
+    })

@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.models import User
-from .models import UserProfile
+from .models import UserProfile, Review
 
 class UserRegistrationForm(forms.ModelForm):
     password = forms.CharField(widget=forms.PasswordInput, label="Пароль")
@@ -19,3 +19,16 @@ class UserRegistrationForm(forms.ModelForm):
 
         if password != confirm_password:
             raise forms.ValidationError("Пароли не совпадают")
+
+class ReviewForm(forms.ModelForm):
+    class Meta:
+        model = Review
+        fields = ['rating', 'comment']
+        widgets = {
+            'comment': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Напишите ваш отзыв...'}),
+            'rating': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 5}),
+        }
+        labels = {
+            'rating': 'Оценка (1-5)',
+            'comment': 'Комментарий'
+        }
