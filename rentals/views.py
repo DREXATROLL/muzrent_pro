@@ -155,3 +155,27 @@ def instrument_detail(request, pk):
         'reviews': reviews,
         'form': form
     })
+    
+# --- 8. API ДЛЯ ОБНОВЛЕНИЯ СТАТУСОВ (POLLING) ---
+def api_check_availability(request):
+    """
+    Принимает список ID (например: ?ids=1,2,5)
+    Возвращает JSON: { "1": "available", "2": "rented", ... }
+    """
+    ids_param = request.GET.get('ids', '')
+    if not ids_param:
+        return JsonResponse({})
+    
+    # Превращаем строку "1,2,5" в список чисел
+    try:
+        ids_list = [int(x) for x in ids_param.split(',') if x.isdigit()]
+    except ValueError:
+        return JsonResponse({})
+
+    # Запрашиваем из БД только id и status
+    instruments = Instrument.objects.filter(id__in=ids_list).values('id', 'status')
+    
+    # Формируем словарь для удобства JS
+    status_map = {str(item['id']): item['status'] for item in instruments}
+    
+    return JsonResponse(status_map)

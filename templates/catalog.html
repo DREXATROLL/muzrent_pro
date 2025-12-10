@@ -8,6 +8,7 @@
 </head>
 <body class="bg-light">
 
+<!-- Навигация -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
     <div class="container">
         <a href="/" class="navbar-brand">🎸 MuzRent Pro</a>
@@ -60,7 +61,7 @@
     </div>
 
     <!-- Товары -->
-    <div class="row">
+    <div class="row" id="catalog-container">
         {% for item in instruments %}
         <div class="col-md-4 mb-4">
             <div class="card h-100 shadow-sm">
@@ -77,14 +78,20 @@
                     <p class="text-muted small">📍 {{ item.location.name }}</p>
                     <h3 class="text-primary">{{ item.price_per_day }} ₽ <small class="fs-6">/сутки</small></h3>
                     
-                    {% if item.status == 'available' %}
-                        <button onclick="book({{ item.id }})" class="btn btn-primary w-100">Забронировать</button>
-                    {% else %}
-                        <button disabled class="btn btn-secondary w-100">
-                            {% if item.status == 'rented' %}Сейчас в аренде
-                            {% else %}На ремонте{% endif %}
-                        </button>
-                    {% endif %}
+                    <!-- БЛОК КНОПКИ С УНИКАЛЬНЫМ ID -->
+                    <div id="btn-wrapper-{{ item.id }}">
+                        {% if item.status == 'available' %}
+                            <button onclick="book({{ item.id }})" 
+                                    class="btn btn-primary w-100 booking-btn" 
+                                    data-id="{{ item.id }}">
+                                Забронировать
+                            </button>
+                        {% else %}
+                            <button disabled class="btn btn-secondary w-100 booking-btn" data-id="{{ item.id }}">
+                                {% if item.status == 'rented' %}Сейчас в аренде{% else %}На ремонте{% endif %}
+                            </button>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
@@ -94,13 +101,10 @@
         </div>
         {% endfor %}
     </div>
-    
-    <div class="text-center mt-5 text-muted small">
-        <a href="/api/v1/instruments/" target="_blank">REST API Link</a> (для проверки)
-    </div>
 </div>
 
 <script>
+    // 1. Функция бронирования
     async function book(id) {
         const formData = new FormData();
         formData.append('id', id);
@@ -112,9 +116,54 @@
             });
             let result = await response.json();
             alert(result.message);
-            if (response.ok) location.reload();
+            // Принудительно обновляем статусы сразу после клика
+            checkStatuses(); 
         } catch(e) { alert('Ошибка сети'); }
     }
+
+    // 2. Функция авто-обновления статусов
+    async function checkStatuses() {
+        // Собираем все ID товаров со страницы
+        const buttons = document.querySelectorAll('.booking-btn');
+        if (buttons.length === 0) return;
+
+        const ids = Array.from(buttons).map(btn => btn.dataset.id).join(',');
+
+        try {
+            // Спрашиваем сервер
+            const response = await fetch(`/api/status/?ids=${ids}`);
+            const data = await response.json();
+
+            // Обновляем кнопки
+            buttons.forEach(btn => {
+                const id = btn.dataset.id;
+                const newStatus = data[id]; // 'available', 'rented', 'maintenance'
+
+                // Если статус пришел и он отличается от текущего состояния
+                // (можно усложнить логику, но просто перерисуем кнопку для надежности)
+                
+                const wrapper = document.getElementById(`btn-wrapper-${id}`);
+                
+                if (newStatus === 'available') {
+                    // Если стала доступна -> делаем активной
+                    if (btn.disabled) {
+                        wrapper.innerHTML = `<button onclick="book(${id})" class="btn btn-primary w-100 booking-btn" data-id="${id}">Забронировать</button>`;
+                    }
+                } else {
+                    // Если занята -> блокируем
+                    if (!btn.disabled) {
+                        const text = newStatus === 'rented' ? 'Сейчас в аренде' : 'На ремонте';
+                        wrapper.innerHTML = `<button disabled class="btn btn-secondary w-100 booking-btn" data-id="${id}">${text}</button>`;
+                    }
+                }
+            });
+        } catch (e) {
+            console.log('Ошибка обновления статусов:', e);
+        }
+    }
+
+    // Запускаем опрос каждые 3 секунды
+    setInterval(checkStatuses, 3000);
 </script>
 </body>
 </html>
