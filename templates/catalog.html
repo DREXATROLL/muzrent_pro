@@ -116,54 +116,58 @@
             });
             let result = await response.json();
             alert(result.message);
-            // Принудительно обновляем статусы сразу после клика
+            // Сразу после клика запускаем проверку
             checkStatuses(); 
         } catch(e) { alert('Ошибка сети'); }
     }
 
     // 2. Функция авто-обновления статусов
     async function checkStatuses() {
-        // Собираем все ID товаров со страницы
         const buttons = document.querySelectorAll('.booking-btn');
         if (buttons.length === 0) return;
 
+        // Собираем ID
         const ids = Array.from(buttons).map(btn => btn.dataset.id).join(',');
 
         try {
-            // Спрашиваем сервер
-            const response = await fetch(`/api/status/?ids=${ids}`);
-            const data = await response.json();
+            // Добавляем timestamp, чтобы браузер НЕ кэшировал запрос
+            const url = `/api/status/?ids=${ids}&t=${new Date().getTime()}`;
+            const response = await fetch(url);
+            
+            if (!response.ok) return; // Если ошибка сервера, выходим
 
-            // Обновляем кнопки
+            const data = await response.json();
+            console.log('Статусы обновлены:', data); // Смотри в консоль F12
+
             buttons.forEach(btn => {
                 const id = btn.dataset.id;
                 const newStatus = data[id]; // 'available', 'rented', 'maintenance'
-
-                // Если статус пришел и он отличается от текущего состояния
-                // (можно усложнить логику, но просто перерисуем кнопку для надежности)
+                
+                // Текущее состояние кнопки (true если disabled)
+                const isCurrentlyDisabled = btn.hasAttribute('disabled');
                 
                 const wrapper = document.getElementById(`btn-wrapper-${id}`);
                 
-                if (newStatus === 'available') {
-                    // Если стала доступна -> делаем активной
-                    if (btn.disabled) {
-                        wrapper.innerHTML = `<button onclick="book(${id})" class="btn btn-primary w-100 booking-btn" data-id="${id}">Забронировать</button>`;
-                    }
-                } else {
-                    // Если занята -> блокируем
-                    if (!btn.disabled) {
-                        const text = newStatus === 'rented' ? 'Сейчас в аренде' : 'На ремонте';
-                        wrapper.innerHTML = `<button disabled class="btn btn-secondary w-100 booking-btn" data-id="${id}">${text}</button>`;
-                    }
+                // ЛОГИКА ОБНОВЛЕНИЯ
+                // Если статус "available", но кнопка выключена -> Включаем
+                if (newStatus === 'available' && isCurrentlyDisabled) {
+                    console.log(`Инструмент ${id} освободился!`);
+                    wrapper.innerHTML = `<button onclick="book(${id})" class="btn btn-primary w-100 booking-btn" data-id="${id}">Забронировать</button>`;
+                } 
+                // Если статус НЕ "available" (занят), но кнопка активна -> Выключаем
+                else if (newStatus !== 'available' && !isCurrentlyDisabled) {
+                    console.log(`Инструмент ${id} был занят!`);
+                    const text = newStatus === 'rented' ? 'Сейчас в аренде' : 'На ремонте';
+                    wrapper.innerHTML = `<button disabled class="btn btn-secondary w-100 booking-btn" data-id="${id}">${text}</button>`;
                 }
             });
         } catch (e) {
-            console.log('Ошибка обновления статусов:', e);
+            console.error('Ошибка поллинга:', e);
         }
     }
 
-    // Запускаем опрос каждые 3 секунды
-    setInterval(checkStatuses, 3000);
+    // Запускаем опрос каждые 2 секунды (почаще для теста)
+    setInterval(checkStatuses, 2000);
 </script>
 </body>
 </html>
