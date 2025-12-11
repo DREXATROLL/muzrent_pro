@@ -49,7 +49,12 @@
                         <div class="row g-2">
                             {% for photo in photos %}
                             <div class="col-md-3 col-4">
-                                <img src="{{ photo.image.url }}" class="img-fluid rounded border shadow-sm" style="height: 100px; width: 100%; object-fit: cover;" alt="Photo">
+                                <!-- Обертка ссылки для лайтбокса -->
+                                <a href="{{ photo.image.url }}" class="glightbox" data-gallery="instrument-gallery">
+                                    <img src="{{ photo.image.url }}" 
+                                         class="img-fluid rounded border shadow-sm gallery-thumb" 
+                                         alt="Photo">
+                                </a>
                             </div>
                             {% endfor %}
                         </div>
@@ -156,5 +161,31 @@
         } catch(e) { alert('Ошибка сети'); }
     }
 </script>
+<!-- Стили для красивых миниатюр -->
+<style>
+    .gallery-thumb {
+        height: 120px;       /* Фиксированная высота */
+        width: 100%;         /* Ширина по контейнеру */
+        object-fit: cover;   /* Обрезает лишнее, не сплющивая картинку */
+        cursor: pointer;     /* Курсор-рука */
+        transition: transform 0.2s;
+    }
+    .gallery-thumb:hover {
+        transform: scale(1.05); /* Легкое увеличение при наведении */
+    }
+</style>
+
+<!-- GLightbox JS -->
+<script src="https://cdn.jsdelivr.net/gh/mcstudios/glightbox/dist/js/glightbox.min.js"></script>
+<script>
+    // Инициализация галереи
+    const lightbox = GLightbox({
+        touchNavigation: true,
+        loop: true,
+        autoplayVideos: true
+    });
+</script>
 </body>
+<!-- GLightbox CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css" />
 </html>
